@@ -12,12 +12,12 @@ branches:
 
 # build with coverage
 script:
-  - sbt clean coverage test publishLocal lambda/scripted coverageReport &&
-    sbt coverageAggregate
+  - ./sbt clean coverage test publishLocal lambda/scripted coverageReport &&
+    ./sbt coverageAggregate
 
 # coveralls integration
 after_success:
-  - sbt coveralls
+  - ./sbt coveralls
 
 # Use container-based infrastructure
 sudo: false
