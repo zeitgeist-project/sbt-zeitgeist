@@ -3,7 +3,7 @@ scala:
     - "2.12.7"
 
 jdk:
-    - openjdk10
+    - oraclejdk8
 
 branches:
   only:

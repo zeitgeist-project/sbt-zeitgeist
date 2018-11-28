@@ -11,9 +11,9 @@ import scala.util.{Failure, Success}
 object AWSLambdaPlugin extends AutoPlugin {
 
   object autoImport {
-    private val metaParadiseVersion   = "3.0.0-M8"
+    private val metaParadiseVersion   = "3.0.0-M11"
 
-    lazy val quaichMacroSettings = Seq(
+    lazy val zeitgeistMacroSettings = Seq(
       libraryDependencies ++= Seq(
         "org.scala-lang" % "scala-reflect" % scalaVersion.value
       ),
