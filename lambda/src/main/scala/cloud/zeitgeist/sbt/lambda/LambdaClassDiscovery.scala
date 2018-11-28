@@ -15,7 +15,7 @@ private[lambda] object LambdaClassDiscovery {
       annotation <- classApi.annotations() if isAnyLambdaAnnotation(annotation)
     } yield classApi.name()
 
-    classes.toSeq
+    classes.toSeq.sorted
   }
 
   private def isAnyLambdaAnnotation(annotation: Annotation) = annotation.base() match {
