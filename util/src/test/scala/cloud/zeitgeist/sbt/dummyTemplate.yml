@@ -1,0 +1,71 @@
+#################################################
+# Template for basic HTTP API (catch all with lambda backend)
+#################################################
+
+AWSTemplateFormatVersion: 2010-09-09
+Description: Default template for bare HTTP API gateway backed by Lambda function.
+
+#################################################
+# Input parameter section
+#################################################
+Parameters:
+    ApiName:
+      Description: API name
+      Type: String
+
+    LambdaArn:
+      Description: ARN of Lambda function
+      Type: String
+
+#################################################
+# Resource configuratioin section
+#################################################
+Resources:
+    RestApi:
+      Type: AWS::ApiGateway::RestApi
+      Properties:
+        Name: !Ref ApiName
+        Description: This is a test API with a new description
+
+    CatchAllResource:
+      Type: AWS::ApiGateway::Resource
+      Properties:
+        RestApiId: !Ref RestApi
+        ParentId: !GetAtt [RestApi, RootResourceId]
+        PathPart: "{path+}"
+
+    AnyMethod:
+      Type: AWS::ApiGateway::Method
+      Properties:
+        RestApiId: !Ref RestApi
+        ResourceId: !Ref CatchAllResource
+        HttpMethod: ANY
+        AuthorizationType: NONE
+        Integration:
+          Type: AWS_PROXY
+          IntegrationHttpMethod: POST
+          Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations"
+
+    LambdaInvokePermission:
+      Type: AWS::Lambda::Permission
+      Properties:
+        FunctionName: !Ref LambdaArn
+        Action: lambda:InvokeFunction
+        Principal: apigateway.amazonaws.com
+        SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/*/*/*"
+
+    DevDeployment:
+      Type: AWS::ApiGateway::Deployment
+      DependsOn: AnyMethod
+      Properties:
+        Description: Development deployment
+        RestApiId: !Ref RestApi
+        StageName: dev
+
+#################################################
+# Output section
+#################################################
+Outputs:
+    ApiId:
+      Description: Id of created HTTP API
+      Value: !Ref RestApi
