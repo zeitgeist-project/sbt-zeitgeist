@@ -11,3 +11,8 @@ Based upon:
 # Authors
 
  * Pawel (Paul) Dolega(https://github.com/pdolega) (only continuing the steps initiated by two projects above)
+
+
+# Publishing
+To publish artifacts use:
+`sbt `

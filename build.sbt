@@ -1,8 +1,8 @@
 import sbt.Keys.publishTo
 import sbt.ScriptedPlugin.autoImport.scriptedBufferLog
 
-val projectVersion          = "0.0.1-SNAPSHOT"
-val projectOrg              = "cloud.zeitgeist"
+val projectVersion          = "0.0.1"
+val projectOrg              = "com.virtuslab.zeitgeist"
 val awsSdkVersion           = "1.11.458"
 
 lazy val commonSettings = Seq(
@@ -11,7 +11,7 @@ lazy val commonSettings = Seq(
   scalaVersion := "2.12.7",
   retrieveManaged := true,
 
-  bintrayOrganization := Some("cloud.zeitgeist"),
+  bintrayOrganization := Some("zeitgeist"),
   licenses += ("MIT", url("http://opensource.org/licenses/MIT")),
 
   fork in (Test, run) := true,
@@ -30,13 +30,14 @@ lazy val commonSettings = Seq(
 lazy val root = (project in file(".")).
   settings(commonSettings: _*).
   settings(
-    name := "sbt",
+    name := "zeitgeist-sbt",
     publishArtifact := false,
     publishTo := Some(Resolver.file("Unused transient repository", file("target/unusedrepo"))),
     bintrayRelease := {}
   ).
   aggregate(
     lambda,
+    cloudFormation,
     util,
     apiGateway
   )
@@ -52,6 +53,15 @@ lazy val util = (project in file("util")).
       "com.amazonaws"  % "aws-java-sdk-cloudformation" % awsSdkVersion
     )
   )
+
+lazy val cloudFormation = (project in file("cloudformation")).
+  enablePlugins(SbtPlugin).
+  settings(commonSettings: _*).
+  settings(
+    name := "sbt-cloudformation",
+    sbtPlugin := true
+  ).
+  dependsOn(util, util % "test->test")
 
 lazy val lambda = (project in file("lambda")).
   enablePlugins(SbtPlugin).
