@@ -139,11 +139,14 @@ object AWSLambdaPlugin extends AutoPlugin {
 
     val resolvedS3KeyPrefix = s3KeyPrefix.getOrElse("")
 
-    val resolvedBucketId = S3BucketId(s3Bucket)
+    val bucketNameResolver = new S3BucketResolver(awsIam)
+    val bucketId = S3BucketId(s3Bucket)
+
     val resolvedTimeout = timeout.map(Timeout)
     val resolvedMemory = memory.map(Memory)
 
     (for {
+      resolvedBucketId <- bucketNameResolver.resolveBucketName(bucketId)
       role <- awsIam.getOrCreateRole(RoleName(roleName), autoCreate)
       s3Key <- awsS3.pushJarToS3(jar, resolvedBucketId, resolvedS3KeyPrefix, autoCreate)
     } yield {

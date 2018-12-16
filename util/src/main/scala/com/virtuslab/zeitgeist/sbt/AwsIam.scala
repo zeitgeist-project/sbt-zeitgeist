@@ -1,10 +1,12 @@
 package com.virtuslab.zeitgeist.sbt
 
 import com.amazonaws.services.identitymanagement.model._
-import com.amazonaws.services.identitymanagement.{AmazonIdentityManagement, AmazonIdentityManagementClientBuilder, model}
+import com.amazonaws.services.identitymanagement.{AmazonIdentityManagement, AmazonIdentityManagementClientBuilder}
 import sbt.Logger
 
 import scala.util.{Failure, Try}
+
+case class AwsUser(userId: String, userName: Option[String])
 
 private[sbt] class AwsIam(region: Region) {
 
@@ -119,5 +121,15 @@ private[sbt] class AwsIam(region: Region) {
 
     iamClient.attachRolePolicy(req)
     log.info(s"Role policy successfully attached...")
+  }
+
+  private[sbt] def getCurrentAwsUser(implicit log: Logger): Try[AwsUser] = Try {
+    val getUserResponse = iamClient.getUser()
+    val user = getUserResponse.getUser
+
+    val awsUser = AwsUser(user.getUserId, Option(user.getUserName))
+    log.info(s"Fetched AWS user: ${awsUser.userName} (id: ${awsUser.userId})")
+
+    awsUser
   }
 }
