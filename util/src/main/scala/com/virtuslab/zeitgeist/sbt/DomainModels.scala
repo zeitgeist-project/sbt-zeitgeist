@@ -6,6 +6,7 @@ case class APIId(value: String) extends AnyVal
 case class Region(value: String) extends AnyVal
 case class S3BucketId(value: String) extends AnyVal
 case class S3Key(value: String) extends AnyVal
+case class S3Location(bucket: String, key: String)
 
 case class LambdaName(value: String) extends AnyVal
 case class LambdaARN(value: String) extends AnyVal

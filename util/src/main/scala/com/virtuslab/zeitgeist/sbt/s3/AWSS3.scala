@@ -18,10 +18,10 @@ private[s3] object AWSS3 {
 private[sbt] class AWSS3(region: Region) {
   private lazy val client = buildClient
 
-  def pushJarToS3(jar: File, bucketId: S3BucketId, s3KeyPrefix: String, autoCreate: Boolean)
+  def pushJarToS3(jar: File, bucketId: S3BucketId, s3Key: String, autoCreate: Boolean)
                  (implicit log: Logger): Try[S3Key] = for {
     _ <- checkBucket(bucketId, autoCreate)
-    s3Key <- pushLambdaJarToBucket (jar, bucketId, s3KeyPrefix + jar.getName)
+    s3Key <- pushLambdaJarToBucket (jar, bucketId, s3Key)
   } yield {
     s3Key
   }

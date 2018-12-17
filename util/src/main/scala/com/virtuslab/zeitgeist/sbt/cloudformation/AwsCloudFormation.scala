@@ -30,8 +30,7 @@ private[sbt] class AwsCloudFormation(region: Region) {
 
     (for {
       _ <- validateStack(templateBody)
-      maybeExistingStack <- describeStack(stackName)
-      stackId <- createOrUpdateStack(stackName, templateBody, params, maybeExistingStack)
+      stackId <- createOrUpdateStack(stackName, templateBody, params)
       stackResult <- fetchStackOutputs(stackName)
     } yield {
       log.info(s"Stack ${stackId.value} successfully deployed...".stripMargin)
@@ -48,19 +47,20 @@ private[sbt] class AwsCloudFormation(region: Region) {
     }
   }
 
-  private def validateStack(templateBody: String)(implicit log: Logger): Try[Unit] = Try {
+  private[sbt] def validateStack(templateBody: String)(implicit log: Logger): Try[Unit] = Try {
     val req = new ValidateTemplateRequest
     req.setTemplateBody(templateBody)
     client.validateTemplate(req)
   }
 
-  private def createOrUpdateStack(stackName: String, templateBody: String, params: Map[String, String],
-                                  maybeExistingStack: Option[Stack])
-                                 (implicit log: Logger): Try[StackArn] = maybeExistingStack match {
-    case Some(stack) =>
-      updateStack(stack, templateBody, params)
-    case None =>
-      createStack(stackName, templateBody, params)
+  private[sbt] def createOrUpdateStack(stackName: String, templateBody: String, params: Map[String, String])
+                                 (implicit log: Logger): Try[StackArn] = {
+    describeStack(stackName).flatMap {
+      case Some(stack) =>
+        updateStack(stack, templateBody, params)
+      case None =>
+        createStack(stackName, templateBody, params)
+    }
   }
 
   private def describeStack(stackName: String)(implicit log: Logger): Try[Option[Stack]] = Try {
@@ -112,6 +112,7 @@ private[sbt] class AwsCloudFormation(region: Region) {
     val req = new UpdateStackRequest()
       .withStackName(stack.getStackName)
       .withTemplateBody(templateBody)
+      .withCapabilities(Capability.CAPABILITY_IAM)
       .withParameters(constructParams(params): _*)
     val result = client.updateStack(req)
     StackArn(result.getStackId)
@@ -132,6 +133,7 @@ private[sbt] class AwsCloudFormation(region: Region) {
       .withTemplateBody(templateBody)
       .withStackName(stackName)
       .withOnFailure(OnFailure.ROLLBACK)
+      .withCapabilities(Capability.CAPABILITY_IAM)
       .withParameters(constructParams(params): _*)
 
     val result = client.createStack(req)

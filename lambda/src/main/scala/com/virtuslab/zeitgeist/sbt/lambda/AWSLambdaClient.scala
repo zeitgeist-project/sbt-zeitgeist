@@ -6,7 +6,7 @@ import com.amazonaws.services.lambda.model._
 import com.amazonaws.services.lambda.{AWSLambda, AWSLambdaClientBuilder}
 import sbt._
 
-import scala.util.{Failure, Try}
+import scala.util.{Failure, Success, Try}
 
 private[sbt] case class LambdaParams(name: LambdaName, handlerName: HandlerName, timeout: Option[Timeout],
                                       memory: Option[Memory])
@@ -26,6 +26,20 @@ private[sbt] class AWSLambdaClient(region: Region) {
         Right(updateExistingLambda(lambdaParams, s3Params, roleArn))
       } else {
         Left(createNewLambda(lambdaParams, roleArn, s3Params))
+      }
+    }
+  }
+
+  def uploadLambdaCodeIfExists(lambdaName: LambdaName, s3Params: S3Params)(implicit log: Logger): Try[Unit] = {
+    for {
+      exists <- lambdaExist(lambdaName)
+    } yield {
+      if (exists) {
+        log.info(s"Lambda already exist, it's code will be updated...")
+        Try(doUpdateLambdaCode(lambdaName, s3Params))
+      } else {
+        log.info(s"Lambda has not been created yet, code is only left on S3...")
+        Success
       }
     }
   }
@@ -78,9 +92,7 @@ private[sbt] class AWSLambdaClient(region: Region) {
   private def updateExistingLambda(lambdaParams: LambdaParams, s3Params: S3Params, roleName: RoleArn)
                                   (implicit log: Logger): UpdateFunctionCodeResult = {
     log.info(s"Updating existing AWS Lambda function '${lambdaParams.name.value}'\n")
-    val updateLambdaReq = createUpdateLambdaRequest(lambdaParams, s3Params)
-    val updateCodeResult = lambdaClient.updateFunctionCode(updateLambdaReq)
-    log.info(s"Successfully updated function code: ${updateCodeResult.getFunctionArn}")
+    val updateCodeResult = doUpdateLambdaCode(lambdaParams.name, s3Params)
 
     val updateFunctionConfReq = new UpdateFunctionConfigurationRequest()
     updateFunctionConfReq.setFunctionName(lambdaParams.name.value)
@@ -97,9 +109,16 @@ private[sbt] class AWSLambdaClient(region: Region) {
     updateCodeResult
   }
 
-  private def createUpdateLambdaRequest(lambdaParams: LambdaParams, s3Params: S3Params): UpdateFunctionCodeRequest = {
+  private def doUpdateLambdaCode(lambdaName: LambdaName, s3Params: S3Params)(implicit log: sbt.Logger) = {
+    val updateLambdaReq = createUpdateLambdaRequest(lambdaName, s3Params)
+    val updateCodeResult = lambdaClient.updateFunctionCode(updateLambdaReq)
+    log.info(s"Successfully updated function code: ${updateCodeResult.getFunctionArn}")
+    updateCodeResult
+  }
+
+  private def createUpdateLambdaRequest(lambdaName: LambdaName, s3Params: S3Params): UpdateFunctionCodeRequest = {
     val req = new UpdateFunctionCodeRequest()
-    req.setFunctionName(lambdaParams.name.value)
+    req.setFunctionName(lambdaName.value)
     req.setS3Bucket(s3Params.s3BucketId.value)
     req.setS3Key(s3Params.s3Key.value)
     req
