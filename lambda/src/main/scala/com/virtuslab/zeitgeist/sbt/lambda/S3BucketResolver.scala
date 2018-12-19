@@ -50,6 +50,7 @@ class S3BucketResolver(awsIam: AwsIam) {
           .replaceAll(s"(?i)\\${fullPlaceHolder(PlaceHolderUserId)}", userId)
           .replaceAll(s"(?i)\\${fullPlaceHolder(PlaceHolderUserName)}", userName.getOrElse(""))
           .replaceAll(s"(?i)\\${fullPlaceHolder(PlaceHolderHostname)}", localhost)
+          .toLowerCase
       )
     }
   }
