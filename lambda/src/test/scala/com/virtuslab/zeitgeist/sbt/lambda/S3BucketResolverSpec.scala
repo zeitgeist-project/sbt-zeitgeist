@@ -23,15 +23,15 @@ class S3BucketResolverSpec extends WordSpec with MustMatchers with MockFactory w
     "handle correctly userName or userId" in {
       val s3Resolver = buildStubWith(userName = Option("testUser"), userId = "testId")
       s3Resolver.resolveBucketName(S3BucketId("com.test.{username}")) must be(
-        Success(S3BucketId("com.test.testUser"))
+        Success(S3BucketId("com.test.testuser"))
       )
 
       s3Resolver.resolveBucketName(S3BucketId("net.{userId}.testing.project")) must be(
-        Success(S3BucketId("net.testId.testing.project"))
+        Success(S3BucketId("net.testid.testing.project"))
       )
 
       s3Resolver.resolveBucketName(S3BucketId("net.{uSerId}.testing.{userNaME}")) must be(
-        Success(S3BucketId("net.testId.testing.testUser"))
+        Success(S3BucketId("net.testid.testing.testuser"))
       )
     }
 
