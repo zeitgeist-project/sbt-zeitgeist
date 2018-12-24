@@ -40,11 +40,11 @@ class S3BucketResolverSpec extends WordSpec with MustMatchers with MockFactory w
 
       val s3Resolver = buildStubWith()
       s3Resolver.resolveBucketName(S3BucketId("com.test.project.{hostname}")) must be(
-        Success(S3BucketId(s"com.test.project.${localhost}"))
+        Success(S3BucketId(s"com.test.project.${localhost.toLowerCase}"))
       )
 
       s3Resolver.resolveBucketName(S3BucketId("net.{HOSTNaME}.testing.project")) must be(
-        Success(S3BucketId(s"net.${localhost}.testing.project"))
+        Success(S3BucketId(s"net.${localhost.toLowerCase}.testing.project"))
       )
     }
 
@@ -61,7 +61,7 @@ class S3BucketResolverSpec extends WordSpec with MustMatchers with MockFactory w
       override protected def buildIamClient: AmazonIdentityManagement = {
         val m = stub[AmazonIdentityManagement]
 
-        val user = new User("path", userName.getOrElse(null), userId, "arn:1234567", new Date)
+        val user = new User("path", userName.orNull, userId, "arn:1234567", new Date)
         val result = new GetUserResult()
         result.setUser(user)
         (m.getUser _).when().returning(result)
