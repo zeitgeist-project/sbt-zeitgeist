@@ -46,10 +46,10 @@ object AWSLambdaPlugin extends AutoPlugin {
       settingKey[String]("Required. Name of the AWS region to setup the Lambda function in.")
 
     val awsLambdaTimeout =
-      settingKey[Int]("In seconds, the Lambda function's timeout length (1-300).")
+      settingKey[Int]("In seconds, the Lambda function's timeout length (1-900).")
 
     val awsLambdaMemory = settingKey[Int](
-      "How much memory (in MB) to allocate to execution of the Lambda function (128-1536, multiple of 64)."
+      "How much memory (in MB) to allocate to execution of the Lambda function (128-3008, multiple of 64)."
     )
 
     val s3Jar = taskKey[sbt.File](

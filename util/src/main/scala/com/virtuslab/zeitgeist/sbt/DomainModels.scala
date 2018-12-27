@@ -32,11 +32,11 @@ case class StackOutput(keyName: String, keyValue: String, description: String)
 
 
 case class Timeout(value: Int) {
-  require(value > 0 && value <= 300, "Lambda timeout must be between 1 and 300 seconds")
+  require(value > 0 && value <= 900, "Lambda timeout must be between 1 and 900 seconds")
 }
 
 case class Memory(value: Int) {
-  require(value >= 128 && value <= 1536, "Lambda memory must be between 128 and 1536 MBs")
+  require(value >= 128 && value <= 3008, "Lambda memory must be between 128 and 3008 MBs")
   require(value % 64 == 0)
 }
 
