@@ -28,9 +28,8 @@ object AWSCloudformationPlugin extends AutoPlugin {
       "Directory containing Cloudformation definitions"
     )
 
-    val cloudFormationStackMap = taskKey[List[Stack]](
-      "Mappings of Stack names to CloudFormation files (e.g. Map(MyLambda -> stack.yml)). Values are relative to" +
-      "cloudformationDir"
+    val cloudFormationStackMap = taskKey[StackExec](
+      "Description of stack executions"
     )
   }
 
@@ -51,10 +50,10 @@ object AWSCloudformationPlugin extends AutoPlugin {
     ).rollbackStacks(streams.value.log),
   )
 
-  private def cloudformation(region: String, dir: Option[String], stacks: Seq[Stack]): CloudformationDeployer =
+  private def cloudformation(region: String, dir: Option[String], stackSteps: StackExec): CloudformationDeployer =
     new CloudformationDeployer(
-    Region(region), getCloudformationDir(dir), stacks
-  )
+      Region(region), getCloudformationDir(dir), stackSteps
+    )
 
   private def getCloudformationDir(cloudformationDir: Option[String]): File = {
     cloudformationDir

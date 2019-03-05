@@ -1,9 +1,8 @@
 package com.virtuslab.zeitgeist.sbt.cloudformation
 
-import com.virtuslab.zeitgeist.sbt.Region
 import com.amazonaws.services.cloudformation.AmazonCloudFormation
 import com.amazonaws.services.cloudformation.model.AmazonCloudFormationException
-import com.virtuslab.zeitgeist.sbt.SbtTest
+import com.virtuslab.zeitgeist.sbt.{Region, SbtTest}
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.{MustMatchers, WordSpec}
 

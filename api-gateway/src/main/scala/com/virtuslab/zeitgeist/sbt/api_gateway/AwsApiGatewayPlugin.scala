@@ -35,7 +35,7 @@ object AwsApiGatewayPlugin extends AutoPlugin {
     (for {
       deployResult <- gatewayDeployer.deployHttpApi(apiName, resolvedRegion, LambdaName(lambdaName))
     } yield {
-      val maybeApiId = deployResult.outputs.find(_.keyName == ApiIdOutput)
+      val maybeApiId = deployResult.results.get(ApiIdOutput)
 
       val apiIdOutput = maybeApiId.getOrElse(
         sys.error(s"Api was not retrieved after stack creation. Deployment result: ${deployResult}")

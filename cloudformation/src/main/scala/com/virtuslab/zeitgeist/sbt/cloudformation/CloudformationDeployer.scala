@@ -6,44 +6,77 @@ import com.virtuslab.zeitgeist.sbt.Region
 import sbt.util.Logger
 
 import scala.io.Source
+import scala.util.{Failure, Try}
 
-class CloudformationDeployer(region: Region, stackDir: File, stackMap: Seq[Stack]) {
+class CloudformationDeployer(region: Region, stackDir: File, stackExecution: StackExec) {
   private val cloudformation = new AwsCloudFormation(region)
 
   def verifyStacks(implicit log: Logger): Unit = {
     log.info("Verify stacks started...")
 
-    traverseStacks { stackDescriptor =>
-        val validationResults = cloudformation.validateStack(stackDescriptor.content).toEither
-        validationResults match {
-          case Right(_) =>
-            log.info(s"Stack: ${stackDescriptor.file.getName} has been validated successfully")
+    val stackExecTraversal = new StackTraversal
 
-          case Left(ex) =>
-            log.error(s"Stack: ${stackDescriptor.file.getName} has been verified as INVALID!")
-            ex.printStackTrace()
-        }
+    stackExecTraversal.traverse(stackExecution) { stack =>
+
+      for {
+        stackDescriptor <- stackInput(stack)
+        validationResult <- doValidate(stackDescriptor)
+      } yield {
+        validationResult
       }
+
+    }
   }
 
-  def deployStacks(implicit log: Logger): Unit = {
+  def deployStacks(implicit log: Logger): Try[StackResults] = {
     log.info("Deploy stacks started...")
 
-    traverseStacks { stackDescriptor =>
-      val validationResults = cloudformation.createOrUpdateStack(
-        stackDescriptor.name,
-        stackDescriptor.content,
-        stackDescriptor.params
-      ).toEither
+    val stackExecTraversal = new StackTraversal
 
-      validationResults match {
-        case Right(_) =>
-          log.info(s"Stack: ${stackDescriptor.file.getName} has been validated successfully")
+    stackExecTraversal.traverse(stackExecution) { stack =>
 
-        case Left(ex) =>
-          log.error(s"Stack: ${stackDescriptor.file.getName} has been verified as INVALID!")
-          ex.printStackTrace()
+      for {
+        stackDescriptor <- stackInput(stack)
+        deployResuls <- doDeploy(stackDescriptor)
+      } yield {
+        deployResuls
       }
+
+    }
+  }
+
+  private def doDeploy(stackDescriptor: StackInput)(implicit log: Logger) = {
+    val validationResults = cloudformation.deployStack(
+      stackDescriptor.name,
+      stackDescriptor.content,
+      stackDescriptor.params
+    )
+
+    validationResults.toEither match {
+      case Right(_) =>
+        log.info(s"Stack: ${stackDescriptor.file.getName} has been validated successfully")
+
+      case Left(ex) =>
+        log.error(s"Stack: ${stackDescriptor.file.getName} has been verified as INVALID!")
+        ex.printStackTrace()
+    }
+
+    validationResults
+  }
+
+  private def doValidate(stackDescriptor: StackInput)(implicit log: Logger) = {
+    val validationResults = cloudformation.validateStack(stackDescriptor.content)
+    validationResults.toEither match {
+      case Right(_) =>
+        log.info(s"Stack: ${stackDescriptor.file.getName} has been validated successfully")
+
+      case Left(ex) =>
+        log.error(s"Stack: ${stackDescriptor.file.getName} has been verified as INVALID!")
+        ex.printStackTrace()
+    }
+
+    validationResults.map { _ =>
+      StackResults()
     }
   }
 
@@ -51,22 +84,21 @@ class CloudformationDeployer(region: Region, stackDir: File, stackMap: Seq[Stack
     log.info("Rollback stacks started... NOT IMPLEMENTED YET")
   }
 
-  private def traverseStacks(logic: StackInput => Unit)(implicit log: Logger): Unit = {
+  private def stackInput(stack: StackDescriptor): Try[StackInput] = {
     if(stackDir.exists()) {
-      stackMap.map { stack =>
+      Try {
         val stackFile = new File(stackDir, stack.path)
 
-        val input = StackInput(
+        val stackDescriptor = StackInput(
           name = stack.name,
           file = stackFile,
           content = Source.fromFile(stackFile).mkString,
           stack.params
         )
-
-        logic(input)
+        stackDescriptor
       }
     } else {
-      log.info(s"Directory ${stackDir.getName} does not exist... verification is skipped")
+      Failure(new IllegalArgumentException(s"Directory ${stackDir.getName} does not exist... verification is skipped"))
     }
   }
 

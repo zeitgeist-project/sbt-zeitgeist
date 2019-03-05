@@ -2,10 +2,10 @@ package com.virtuslab.zeitgeist.sbt.cloudformation
 
 import java.util.Date
 
-import com.virtuslab.zeitgeist.sbt._
 import com.amazonaws.services.cloudformation._
 import com.amazonaws.services.cloudformation.model.StackStatus._
 import com.amazonaws.services.cloudformation.model._
+import com.virtuslab.zeitgeist.sbt._
 import sbt.Logger
 
 import scala.collection.JavaConverters._
@@ -25,7 +25,7 @@ private[sbt] class AwsCloudFormation(region: Region) {
   lazy val client: AmazonCloudFormation = buildClient
 
   def deployStack(stackName: String, templateBody: String, params: Map[String, String])
-                 (implicit log: Logger): Try[StackDeployResult] = {
+                 (implicit log: Logger): Try[StackResults] = {
     log.debug(s"Deploying stack: ${stackName} with parameters: ${params}...")
 
     (for {
@@ -112,7 +112,7 @@ private[sbt] class AwsCloudFormation(region: Region) {
     val req = new UpdateStackRequest()
       .withStackName(stack.getStackName)
       .withTemplateBody(templateBody)
-      .withCapabilities(Capability.CAPABILITY_IAM)
+      .withCapabilities(Capability.CAPABILITY_IAM, Capability.CAPABILITY_NAMED_IAM)
       .withParameters(constructParams(params): _*)
     val result = client.updateStack(req)
     StackArn(result.getStackId)
@@ -133,7 +133,7 @@ private[sbt] class AwsCloudFormation(region: Region) {
       .withTemplateBody(templateBody)
       .withStackName(stackName)
       .withOnFailure(OnFailure.ROLLBACK)
-      .withCapabilities(Capability.CAPABILITY_IAM)
+      .withCapabilities(Capability.CAPABILITY_IAM, Capability.CAPABILITY_NAMED_IAM)
       .withParameters(constructParams(params): _*)
 
     val result = client.createStack(req)
@@ -200,12 +200,14 @@ private[sbt] class AwsCloudFormation(region: Region) {
     Stream.cons(stack.map(_.getStackStatus), stackStatusStream(stackName))
   }
 
-  private def fetchStackOutputs(stackName: String)(implicit log: Logger): Try[StackDeployResult] = Try {
+  private def fetchStackOutputs(stackName: String)(implicit log: Logger): Try[StackResults] = Try {
     val maybeStack = doDescribeStack(stackName)
     maybeStack.map { stack =>
-      StackDeployResult(
+      new StackResults(
         StackArn(stack.getStackId),
-        stack.getOutputs.asScala.map(StackOutput.apply)
+        stack.getOutputs.asScala.map { output =>
+          output.getOutputKey() -> StackOutput.apply(output)
+        }.toMap
       )
     }.getOrElse {
       throw new IllegalStateException(s"Stack should have been created at this point.")
