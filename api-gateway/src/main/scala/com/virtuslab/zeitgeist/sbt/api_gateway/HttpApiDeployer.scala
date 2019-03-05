@@ -2,7 +2,7 @@ package com.virtuslab.zeitgeist.sbt.api_gateway
 
 import com.amazonaws.services.lambda.model.{FunctionConfiguration, ResourceNotFoundException}
 import com.virtuslab.zeitgeist.sbt._
-import com.virtuslab.zeitgeist.sbt.cloudformation.AwsCloudFormation
+import com.virtuslab.zeitgeist.sbt.cloudformation.{AwsCloudFormation, StackResults}
 import com.virtuslab.zeitgeist.sbt.lambda.AWSLambdaClient
 import sbt.Logger
 
@@ -21,7 +21,7 @@ private[api_gateway] object HttpApiDeployer {
 private[api_gateway] class HttpApiDeployer {
   import HttpApiDeployer._
 
-  def deployHttpApi(apiName: String, region: Region, lambdaName: LambdaName)(implicit log: Logger): Try[StackDeployResult] = {
+  def deployHttpApi(apiName: String, region: Region, lambdaName: LambdaName)(implicit log: Logger): Try[StackResults] = {
     val template = Source.fromInputStream(
       getClass.getResourceAsStream("/cloudformation/basicHttpApi.yml")
     )(Codec.UTF8).mkString

@@ -17,20 +17,6 @@ case class Role(name: RoleName, arn: RoleArn)
 case class RoleName(value: String) extends AnyVal
 case class RoleArn(value: String) extends AnyVal
 
-case class StackArn(value: String) extends AnyVal
-
-case class StackDeployResult(stackArn: StackArn, outputs: Seq[StackOutput])
-
-object StackOutput {
-  def apply(awsOutput: Output): StackOutput = StackOutput(
-    awsOutput.getOutputKey,
-    awsOutput.getOutputValue,
-    awsOutput.getDescription
-  )
-}
-case class StackOutput(keyName: String, keyValue: String, description: String)
-
-
 case class Timeout(value: Int) {
   require(value > 0 && value <= 900, "Lambda timeout must be between 1 and 900 seconds")
 }

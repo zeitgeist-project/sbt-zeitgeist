@@ -1,7 +1,7 @@
 import sbt.Keys.publishTo
 import sbt.ScriptedPlugin.autoImport.scriptedBufferLog
 
-val projectVersion          = "0.0.6"
+val projectVersion          = "0.0.7"
 val projectOrg              = "com.virtuslab.zeitgeist"
 val awsSdkVersion           = "1.11.458"
 
@@ -89,5 +89,5 @@ lazy val apiGateway = (project in file("api-gateway")).
       "com.amazonaws"  % "aws-java-sdk-api-gateway" % awsSdkVersion
     )
   ).
-  dependsOn(util, lambda)
+  dependsOn(util, lambda, cloudFormation)
 
