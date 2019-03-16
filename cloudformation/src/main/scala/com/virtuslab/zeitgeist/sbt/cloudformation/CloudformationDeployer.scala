@@ -25,10 +25,10 @@ class CloudformationDeployer(region: Region, stackDir: File, stackExecution: Sta
         validationResult
       }
 
-    }
+    }.get
   }
 
-  def deployStacks(implicit log: Logger): Try[StackResults] = {
+  def deployStacks(implicit log: Logger): Unit = {
     log.info("Deploy stacks started...")
 
     val stackExecTraversal = new StackTraversal
@@ -42,7 +42,7 @@ class CloudformationDeployer(region: Region, stackDir: File, stackExecution: Sta
         deployResuls
       }
 
-    }
+    }.get
   }
 
   private def doDeploy(stackDescriptor: StackInput)(implicit log: Logger) = {
