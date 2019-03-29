@@ -54,24 +54,54 @@ private[sbt] class AwsCloudFormation(region: Region) {
   }
 
   private[sbt] def createOrUpdateStack(stackName: String, templateBody: String, params: Map[String, String])
-                                 (implicit log: Logger): Try[StackArn] = {
-    describeStack(stackName).flatMap {
-      case Some(stack) =>
-        updateStack(stack, templateBody, params)
-      case None =>
-        createStack(stackName, templateBody, params)
+                                      (implicit log: Logger): Try[StackArn] =
+    for {
+      existingStack <- describeStack(stackName)
+      stackAfterCleanup <- cleanupStack(existingStack)
+      result <- stackAfterCleanup match {
+        case Some(stack) =>
+          updateStack(stack, templateBody, params)
+        case None =>
+          createStack(stackName, templateBody, params)
+      }
+    } yield {
+      result
+    }
+
+  private def cleanupStack(stackOption: Option[Stack])(implicit log: Logger): Try[Option[Stack]] =
+    stackOption match {
+      // this status means that creation has failed, need to delete the stack and create from scratch
+      case Some(stack) if stack.getStackStatus == ROLLBACK_COMPLETE.toString =>
+        log.info("Cleaning up previous deployment attempt")
+        doCleanup(stack)
+      case result => Success(result)
+    }
+
+  private def doCleanup(stack: Stack)(implicit log: Logger) = {
+    deleteStack(stack.getStackName).flatMap { _ =>
+      stackStatusStream(stack.getStackName)
+        .dropWhile { // drop while the stack exists or has failed to be deleted
+          case Some(status) if status != DELETE_FAILED.toString =>
+            Thread.sleep(2500)
+            true
+          case _ => false
+        }
+        .head
+        .map(status => Failure(new AmazonCloudFormationException(s"Failed to cleanup stack, status: $status")))
+        .getOrElse(Success(None))
     }
   }
 
-  private def describeStack(stackName: String)(implicit log: Logger): Try[Option[Stack]] = Try {
-    doDescribeStack(stackName)
-  }.recoverWith {
-    case e: AmazonCloudFormationException if e.getErrorCode == ErrorValidation =>
-      log.info(s"Given stack does not exist on AWS: ${stackName}, it will be created...")
-      Success(None)
-    case e =>
-      Failure(e)
-  }
+  private def describeStack(stackName: String)(implicit log: Logger): Try[Option[Stack]] =
+    Try {
+      doDescribeStack(stackName)
+    } recoverWith {
+      case e: AmazonCloudFormationException if e.getErrorCode == ErrorValidation =>
+        log.debug(s"Given stack does not exist on AWS: $stackName")
+        Success(None)
+      case e =>
+        Failure(e)
+    }
 
   private def doDescribeStack(stackName: String)(implicit log: Logger): Option[Stack] = {
     val req = new DescribeStacksRequest()
@@ -109,6 +139,8 @@ private[sbt] class AwsCloudFormation(region: Region) {
 
   private def doUpdateStack(stack: Stack, templateBody: String, params: Map[String, String])
                            (implicit log: Logger): StackArn = {
+    log.info(s"Updating stack: ${stack.getStackName}")
+
     val req = new UpdateStackRequest()
       .withStackName(stack.getStackName)
       .withTemplateBody(templateBody)
@@ -127,20 +159,32 @@ private[sbt] class AwsCloudFormation(region: Region) {
       false
   }
 
+  private def deleteStack(stackName: String)(implicit log: Logger): Try[Unit] =
+    Try {
+      log.info(s"Deleting stack: $stackName")
+
+      client.deleteStack {
+        new DeleteStackRequest().withStackName(stackName)
+      }
+    }
+
   private def createStack(stackName: String, templateBody: String, params: Map[String, String])
-                         (implicit log: Logger): Try[StackArn] = Try {
-    val req = new CreateStackRequest()
-      .withTemplateBody(templateBody)
-      .withStackName(stackName)
-      .withOnFailure(OnFailure.ROLLBACK)
-      .withCapabilities(Capability.CAPABILITY_IAM, Capability.CAPABILITY_NAMED_IAM)
-      .withParameters(constructParams(params): _*)
+                         (implicit log: Logger): Try[StackArn] =
+    Try {
+      log.info(s"Creating new stack: $stackName")
 
-    val result = client.createStack(req)
-    statusWatch(stackName)
+      val req = new CreateStackRequest()
+        .withTemplateBody(templateBody)
+        .withStackName(stackName)
+        .withOnFailure(OnFailure.ROLLBACK)
+        .withCapabilities(Capability.CAPABILITY_IAM, Capability.CAPABILITY_NAMED_IAM)
+        .withParameters(constructParams(params): _*)
 
-    StackArn(result.getStackId)
-  }
+      val result = client.createStack(req)
+      statusWatch(stackName)
+
+      StackArn(result.getStackId)
+    }
 
   private def statusWatch(stackName: String, maybeLastChange: Option[Date] = None)(implicit log: Logger): Unit = {
     val statusAttemptBarrier = waitTillProcessFinished(stackName)
@@ -196,8 +240,8 @@ private[sbt] class AwsCloudFormation(region: Region) {
   }
 
   private def stackStatusStream(stackName: String)(implicit log: Logger): Stream[Option[String]] = {
-    val stack = doDescribeStack(stackName)
-    Stream.cons(stack.map(_.getStackStatus), stackStatusStream(stackName))
+    val stack = describeStack(stackName)
+    Stream.cons(stack.get.map(_.getStackStatus), stackStatusStream(stackName))
   }
 
   private def fetchStackOutputs(stackName: String)(implicit log: Logger): Try[StackResults] = Try {
