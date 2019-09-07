@@ -26,14 +26,13 @@ object AWSS3 {
     Try {
       val is = Files.newInputStream(Paths.get(jar.getAbsolutePath))
       val dis = new DigestInputStream(is, md)
-      Try {
-        while(dis.available() > 0) {
-          dis.read
-        }
+
+      Stream.continually(dis.read()).takeWhile { _ =>
+        dis.available() > 0
       }
 
-      Try(is.close())
-      Try(dis.close())
+      dis.close()
+      is.close()
     }
 
     val localHash = Base64.getEncoder.encodeToString(md.digest)
@@ -64,8 +63,11 @@ private[sbt] class AWSS3(region: Region) {
                            (implicit log: Logger): Try[Boolean] = Try {
 
     val s3Size = client.listObjects(bucketId.value, key).getObjectSummaries.asScala.headOption.map(_.getSize).getOrElse(-1)
-    val metadata = client.getObjectMetadata(bucketId.value, key)
-    val s3Hash = metadata.getUserMetaDataOf(AWSS3.HashMetadata)
+
+    val s3Hash = Try {
+      val metadata = client.getObjectMetadata(bucketId.value, key)
+      metadata.getUserMetaDataOf(AWSS3.HashMetadata)
+    }.getOrElse("")
 
     log.debug(
       s"Calculated JAR markers: " +
@@ -79,10 +81,10 @@ private[sbt] class AWSS3(region: Region) {
   private def pushLambdaWithChecking(jar: File, fileMarkers: FileMarkers, bucketId: S3BucketId, key: String)(implicit log: Logger): Try[S3Key] = {
     checkChecksum(jar, fileMarkers, bucketId, key).flatMap { needToUpload =>
       if(needToUpload) {
-        log.debug("Jar file is to be pushed to S3...")
+        log.info("Jar file is to be pushed to S3...")
         pushLambdaJarToBucket(jar, fileMarkers, bucketId, key)
       } else {
-        log.debug("Jar file upload skipped...")
+        log.info("Jar file upload skipped...")
         Try(S3Key(key))
       }
     }
@@ -92,6 +94,7 @@ private[sbt] class AWSS3(region: Region) {
                                    (implicit log: Logger): Try[S3Key] = Try {
     val metadata = new ObjectMetadata()
     metadata.setUserMetadata(Map(AWSS3.HashMetadata -> fileMarkers.hash).asJava)
+    metadata.setContentLength(jar.length())
 
     val fileStream = new FileInputStream(jar)
 
