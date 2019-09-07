@@ -1,7 +1,7 @@
 import sbt.Keys.publishTo
 import sbt.ScriptedPlugin.autoImport.scriptedBufferLog
 
-val projectVersion          = "0.0.7"
+val projectVersion          = "0.0.8"
 val projectOrg              = "com.virtuslab.zeitgeist"
 val awsSdkVersion           = "1.11.458"
 
