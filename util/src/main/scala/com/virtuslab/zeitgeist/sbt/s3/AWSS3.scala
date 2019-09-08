@@ -41,8 +41,8 @@ object AWSS3 {
 }
 
 private[s3] case class FileMarkers(
-  val size: Long,
-  val hash: String
+  size: Long,
+  hash: String
 )
 
 private[sbt] class AWSS3(region: Region) {
@@ -59,7 +59,7 @@ private[sbt] class AWSS3(region: Region) {
     }
   }
 
-  private def checkChecksum(jar: File, fileMarkers: FileMarkers, bucketId: S3BucketId, key: String)
+  private def isLocalFileSameAsS3(jar: File, fileMarkers: FileMarkers, bucketId: S3BucketId, key: String)
                            (implicit log: Logger): Try[Boolean] = Try {
 
     val s3Size = client.listObjects(bucketId.value, key).getObjectSummaries.asScala.headOption.map(_.getSize).getOrElse(-1)
@@ -78,8 +78,9 @@ private[sbt] class AWSS3(region: Region) {
     fileMarkers.size != s3Size || fileMarkers.hash != s3Hash
   }
 
-  private def pushLambdaWithChecking(jar: File, fileMarkers: FileMarkers, bucketId: S3BucketId, key: String)(implicit log: Logger): Try[S3Key] = {
-    checkChecksum(jar, fileMarkers, bucketId, key).flatMap { needToUpload =>
+  private def pushLambdaWithChecking(jar: File, fileMarkers: FileMarkers, bucketId: S3BucketId, key: String)
+                                    (implicit log: Logger): Try[S3Key] = {
+    isLocalFileSameAsS3(jar, fileMarkers, bucketId, key).flatMap { needToUpload =>
       if(needToUpload) {
         log.info("Jar file is to be pushed to S3...")
         pushLambdaJarToBucket(jar, fileMarkers, bucketId, key)
