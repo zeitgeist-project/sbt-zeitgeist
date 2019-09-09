@@ -1,41 +1,118 @@
 package com.virtuslab.zeitgeist.sbt.s3
 
-import java.io.File
+import java.io.{BufferedInputStream, File, FileInputStream}
+import java.nio.file.{Files, Paths}
+import java.security.{DigestInputStream, MessageDigest}
+import java.util.Base64
 
-import com.virtuslab.zeitgeist.sbt.{AwsCredentials, Region, S3BucketId, S3Key}
 import com.amazonaws.event.{ProgressEvent, ProgressEventType, SyncProgressListener}
 import com.amazonaws.services.s3.model._
 import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder}
 import com.amazonaws.{AmazonServiceException, AmazonWebServiceRequest}
+import com.virtuslab.zeitgeist.sbt.{AwsCredentials, Region, S3BucketId, S3Key}
 import sbt.Logger
 
 import scala.util.{Failure, Try}
+import scala.collection.JavaConverters._
 
-private[s3] object AWSS3 {
+object AWSS3 {
   val NoSuchBucketCode = "NoSuchBucket"
+  val HashMetadata = "com.zeitgeist.hash"
+
+  def calculateFileMarkers(jar: File): FileMarkers = {
+    val localSize = jar.length()
+    val md = MessageDigest.getInstance("MD5")
+
+    Try {
+      val is = Files.newInputStream(Paths.get(jar.getAbsolutePath))
+      val dis = new DigestInputStream(is, md)
+
+      Stream.continually(dis.read()).takeWhile { _ =>
+        dis.available() > 0
+      }
+
+      dis.close()
+      is.close()
+    }
+
+    val localHash = Base64.getEncoder.encodeToString(md.digest)
+    FileMarkers(localSize, localHash)
+  }
 }
+
+private[s3] case class FileMarkers(
+  size: Long,
+  hash: String
+)
 
 private[sbt] class AWSS3(region: Region) {
   private lazy val client = buildClient
 
   def pushJarToS3(jar: File, bucketId: S3BucketId, s3Key: String, autoCreate: Boolean)
-                 (implicit log: Logger): Try[S3Key] = for {
-    _ <- checkBucket(bucketId, autoCreate)
-    s3Key <- pushLambdaJarToBucket (jar, bucketId, s3Key)
-  } yield {
-    s3Key
+                 (implicit log: Logger): Try[S3Key] = {
+    val fileMarkers = AWSS3.calculateFileMarkers(jar)
+    for {
+      _ <- checkBucket(bucketId, autoCreate)
+      s3Key <- pushLambdaWithChecking(jar, fileMarkers, bucketId, s3Key)
+    } yield {
+      s3Key
+    }
   }
 
-  private def pushLambdaJarToBucket(jar: File, bucketId: S3BucketId, key: String)
+  private def isLocalFileSameAsS3(jar: File, fileMarkers: FileMarkers, bucketId: S3BucketId, key: String)
+                           (implicit log: Logger): Try[Boolean] = Try {
+
+    val s3Size = client.listObjects(bucketId.value, key).getObjectSummaries.asScala.headOption.map(_.getSize).getOrElse(-1)
+
+    val s3Hash = Try {
+      val metadata = client.getObjectMetadata(bucketId.value, key)
+      metadata.getUserMetaDataOf(AWSS3.HashMetadata)
+    }.getOrElse("")
+
+    log.debug(
+      s"Calculated JAR markers: " +
+      s"localSize: ${fileMarkers.size} vs s3Size: ${s3Size} " +
+      s"localHash: ${fileMarkers.hash} vs s3Hash: ${s3Hash}"
+    )
+
+    fileMarkers.size != s3Size || fileMarkers.hash != s3Hash
+  }
+
+  private def pushLambdaWithChecking(jar: File, fileMarkers: FileMarkers, bucketId: S3BucketId, key: String)
+                                    (implicit log: Logger): Try[S3Key] = {
+    isLocalFileSameAsS3(jar, fileMarkers, bucketId, key).flatMap { needToUpload =>
+      if(needToUpload) {
+        log.info("Jar file is to be pushed to S3...")
+        pushLambdaJarToBucket(jar, fileMarkers, bucketId, key)
+      } else {
+        log.info("Jar file upload skipped...")
+        Try(S3Key(key))
+      }
+    }
+  }
+
+  private def pushLambdaJarToBucket(jar: File, fileMarkers: FileMarkers, bucketId: S3BucketId, key: String)
                                    (implicit log: Logger): Try[S3Key] = Try {
-    val objectRequest = new PutObjectRequest(bucketId.value, key, jar)
-    objectRequest.setCannedAcl(CannedAccessControlList.AuthenticatedRead)
-    addProgressListener(objectRequest, jar.length(), key)
-    client.putObject(objectRequest)
+    val metadata = new ObjectMetadata()
+    metadata.setUserMetadata(Map(AWSS3.HashMetadata -> fileMarkers.hash).asJava)
+    metadata.setContentLength(jar.length())
+
+    val fileStream = new FileInputStream(jar)
+
+    Try {
+      val buffStream = new BufferedInputStream(fileStream)
+      val objectRequest = new PutObjectRequest(bucketId.value, key, buffStream, metadata)
+      objectRequest.setCannedAcl(CannedAccessControlList.AuthenticatedRead)
+      addProgressListener(objectRequest, jar.length(), key)
+      client.putObject(objectRequest)
+    }
+
+    fileStream.close()
+
     S3Key(key)
   }
 
-  private def checkBucket(bucketId: S3BucketId, autoCreate: Boolean)(implicit log: Logger): Try[Unit] = {
+  protected[sbt] def checkBucket(bucketId: S3BucketId, autoCreate: Boolean)(implicit log: Logger): Try[Unit] = {
     Try {
       client.listObjects(new ListObjectsRequest(bucketId.value, null, null, null, 0))
       log.info(s"Bucket ${bucketId.value} exists and is accessible")
@@ -115,7 +192,7 @@ private[sbt] class AWSS3(region: Region) {
     if (objects.length == 1) s"$verb '${objects.head}' $preposition the S3 bucket '$bucket'."
     else                     s"$verb ${objects.length} objects $preposition the S3 bucket '$bucket'."
 
-  private def buildClient: AmazonS3 = {
+  protected[sbt] def buildClient: AmazonS3 = {
     val builder = AmazonS3ClientBuilder
       .standard()
       .withCredentials(AwsCredentials.provider)

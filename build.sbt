@@ -1,14 +1,14 @@
 import sbt.Keys.publishTo
 import sbt.ScriptedPlugin.autoImport.scriptedBufferLog
 
-val projectVersion          = "0.0.7"
+val projectVersion          = "0.1.0"
 val projectOrg              = "com.virtuslab.zeitgeist"
 val awsSdkVersion           = "1.11.458"
 
 lazy val commonSettings = Seq(
   organization := projectOrg,
   version := projectVersion,
-  scalaVersion := "2.12.7",
+  scalaVersion := "2.12.8",
   retrieveManaged := true,
 
   bintrayOrganization := Some("zeitgeist"),
