@@ -4,16 +4,16 @@ import java.io.{BufferedInputStream, File, FileInputStream}
 import java.nio.file.{Files, Paths}
 import java.security.{DigestInputStream, MessageDigest}
 import java.util.Base64
+import scala.collection.JavaConverters._
+import scala.util.control.NonFatal
+import scala.util.{Failure, Try}
 
 import com.amazonaws.event.{ProgressEvent, ProgressEventType, SyncProgressListener}
 import com.amazonaws.services.s3.model._
 import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder}
 import com.amazonaws.{AmazonServiceException, AmazonWebServiceRequest}
-import com.virtuslab.zeitgeist.sbt.{AwsCredentials, Region, S3BucketId, S3Key}
+import com.virtuslab.zeitgeist.sbt.{AwsClientSupport, Region, S3BucketId, S3Key}
 import sbt.Logger
-
-import scala.util.{Failure, Try}
-import scala.collection.JavaConverters._
 
 object AWSS3 {
   val NoSuchBucketCode = "NoSuchBucket"
@@ -23,14 +23,14 @@ object AWSS3 {
     val localSize = jar.length()
     val md = MessageDigest.getInstance("MD5")
 
-    Try {
-      val is = Files.newInputStream(Paths.get(jar.getAbsolutePath))
-      val dis = new DigestInputStream(is, md)
+    val is = Files.newInputStream(Paths.get(jar.getAbsolutePath))
+    val dis = new DigestInputStream(is, md)
 
+    try {
       Stream.continually(dis.read()).takeWhile { _ =>
         dis.available() > 0
       }
-
+    } finally {
       dis.close()
       is.close()
     }
@@ -45,11 +45,15 @@ private[s3] case class FileMarkers(
   hash: String
 )
 
-private[sbt] class AWSS3(region: Region) {
+private[sbt] class AWSS3(val region: Region) extends AwsClientSupport {
   private lazy val client = buildClient
 
+  protected[sbt] def buildClient: AmazonS3 = setupClient {
+    AmazonS3ClientBuilder.standard()
+  }
+
   def pushJarToS3(jar: File, bucketId: S3BucketId, s3Key: String, autoCreate: Boolean)
-                 (implicit log: Logger): Try[S3Key] = {
+    (implicit log: Logger): Try[S3Key] = {
     val fileMarkers = AWSS3.calculateFileMarkers(jar)
     for {
       _ <- checkBucket(bucketId, autoCreate)
@@ -59,55 +63,66 @@ private[sbt] class AWSS3(region: Region) {
     }
   }
 
-  private def isLocalFileSameAsS3(jar: File, fileMarkers: FileMarkers, bucketId: S3BucketId, key: String)
-                           (implicit log: Logger): Try[Boolean] = Try {
+  private def isLocalFileSameAsS3(jar: File, fileMarkers: FileMarkers, bucket: String, key: String)
+    (implicit log: Logger): Try[Boolean] = Try {
+    val objectSummary = client.listObjects(bucket, key).getObjectSummaries.asScala.toList
 
-    val s3Size = client.listObjects(bucketId.value, key).getObjectSummaries.asScala.headOption.map(_.getSize).getOrElse(-1)
+    objectSummary match {
+      case Nil =>
+        log.debug(s"File $key doesn't exist in $bucket")
+        false
+      case head :: _ =>
+        val s3Size = head.getSize
+        val s3Hash =
+          Try {
+            val metadata = client.getObjectMetadata(bucket, key)
+            metadata.getUserMetaDataOf(AWSS3.HashMetadata)
+          }.recover {
+            case NonFatal(exception) =>
+              log.warn(s"Failed to get hash from S3: $exception")
+              ""
+          }.get
 
-    val s3Hash = Try {
-      val metadata = client.getObjectMetadata(bucketId.value, key)
-      metadata.getUserMetaDataOf(AWSS3.HashMetadata)
-    }.getOrElse("")
+        log.debug(
+          s"Calculated JAR markers: " +
+            s"localSize: ${fileMarkers.size} vs s3Size: ${s3Size} " +
+            s"localHash: ${fileMarkers.hash} vs s3Hash: ${s3Hash}"
+        )
 
-    log.debug(
-      s"Calculated JAR markers: " +
-      s"localSize: ${fileMarkers.size} vs s3Size: ${s3Size} " +
-      s"localHash: ${fileMarkers.hash} vs s3Hash: ${s3Hash}"
-    )
-
-    fileMarkers.size != s3Size || fileMarkers.hash != s3Hash
+        fileMarkers.size == s3Size && fileMarkers.hash == s3Hash
+    }
   }
 
   private def pushLambdaWithChecking(jar: File, fileMarkers: FileMarkers, bucketId: S3BucketId, key: String)
-                                    (implicit log: Logger): Try[S3Key] = {
-    isLocalFileSameAsS3(jar, fileMarkers, bucketId, key).flatMap { needToUpload =>
-      if(needToUpload) {
-        log.info("Jar file is to be pushed to S3...")
-        pushLambdaJarToBucket(jar, fileMarkers, bucketId, key)
-      } else {
+    (implicit log: Logger): Try[S3Key] = {
+    isLocalFileSameAsS3(jar, fileMarkers, bucketId.value, key).flatMap { isTheSame =>
+      if (isTheSame) {
         log.info("Jar file upload skipped...")
         Try(S3Key(key))
+      } else {
+        log.info("Jar file is to be pushed to S3...")
+        pushLambdaJarToBucket(jar, fileMarkers, bucketId, key)
       }
     }
   }
 
   private def pushLambdaJarToBucket(jar: File, fileMarkers: FileMarkers, bucketId: S3BucketId, key: String)
-                                   (implicit log: Logger): Try[S3Key] = Try {
+    (implicit log: Logger): Try[S3Key] = Try {
     val metadata = new ObjectMetadata()
     metadata.setUserMetadata(Map(AWSS3.HashMetadata -> fileMarkers.hash).asJava)
     metadata.setContentLength(jar.length())
 
     val fileStream = new FileInputStream(jar)
 
-    Try {
+    try {
       val buffStream = new BufferedInputStream(fileStream)
       val objectRequest = new PutObjectRequest(bucketId.value, key, buffStream, metadata)
       objectRequest.setCannedAcl(CannedAccessControlList.AuthenticatedRead)
       addProgressListener(objectRequest, jar.length(), key)
       client.putObject(objectRequest)
+    } finally {
+      fileStream.close()
     }
-
-    fileStream.close()
 
     S3Key(key)
   }
@@ -126,7 +141,7 @@ private[sbt] class AWSS3(region: Region) {
   }
 
   private def handleBucketDoesNotExist(e: AmazonServiceException, bucketId: S3BucketId, autoCreate: Boolean)
-                                      (implicit log: Logger): Try[Unit] = {
+    (implicit log: Logger): Try[Unit] = {
     if (autoCreate) {
       log.info(s"Bucket ${bucketId.value} doesn't exists, attempting to create it")
       Try {
@@ -144,17 +159,19 @@ private[sbt] class AWSS3(region: Region) {
     * Progress bar code borrowed from
     * https://github.com/sbt/sbt-s3/blob/master/src/main/scala/S3Plugin.scala
     */
-  private def progressBar(percent:Int) = {
-    val b="=================================================="
-    val s="                                                  "
-    val p=percent/2
-    val z:StringBuilder=new StringBuilder(80)
+  private def progressBar(percent: Int) = {
+    val b = "=================================================="
+    val s = "                                                  "
+    val p = percent / 2
+    val z: StringBuilder = new StringBuilder(80)
     z.append("\r[")
-    z.append(b.substring(0,p))
-    if (p<50) {z.append("=>"); z.append(s.substring(p))}
+    z.append(b.substring(0, p))
+    if (p < 50) {
+      z.append("=>"); z.append(s.substring(p))
+    }
     z.append("]   ")
-    if (p<5) z.append(" ")
-    if (p<50) z.append(" ")
+    if (p < 5) z.append(" ")
+    if (p < 50) z.append(" ")
     z.append(percent)
     z.append("%   ")
     z.mkString
@@ -174,6 +191,7 @@ private[sbt] class AWSS3(region: Region) {
         else
           n
       }
+
       override def progressChanged(progressEvent: ProgressEvent): Unit = {
         if (progressEvent.getEventType == ProgressEventType.REQUEST_BYTE_TRANSFER_EVENT ||
           progressEvent.getEventType == ProgressEventType.RESPONSE_BYTE_TRANSFER_EVENT) {
@@ -186,18 +204,6 @@ private[sbt] class AWSS3(region: Region) {
           println()
       }
     })
-  }
-
-  private def prettyLastMsg(verb:String, objects:Seq[String], preposition:String, bucket:String) =
-    if (objects.length == 1) s"$verb '${objects.head}' $preposition the S3 bucket '$bucket'."
-    else                     s"$verb ${objects.length} objects $preposition the S3 bucket '$bucket'."
-
-  protected[sbt] def buildClient: AmazonS3 = {
-    val builder = AmazonS3ClientBuilder
-      .standard()
-      .withCredentials(AwsCredentials.provider)
-    builder.setRegion(region.value)
-    builder.build()
   }
 }
 

@@ -8,9 +8,13 @@ import scala.util.{Failure, Try}
 
 case class AwsUser(userId: String, userName: Option[String])
 
-private[sbt] class AwsIam(region: Region) {
+private[sbt] class AwsIAM(val region: Region) extends AwsClientSupport {
 
-  lazy val iamClient: AmazonIdentityManagement = buildIamClient
+  lazy val iamClient: AmazonIdentityManagement = buildIAMClient
+
+  protected def buildIAMClient: AmazonIdentityManagement = setupClient {
+    AmazonIdentityManagementClientBuilder.standard()
+  }
 
   def getOrCreateRole(roleName: RoleName, autoCreate: Boolean)
                      (implicit log: Logger): Try[Role] = {
@@ -28,15 +32,6 @@ private[sbt] class AwsIam(region: Region) {
       case e: Throwable =>
         Failure(e)
     }
-  }
-
-  protected def buildIamClient: AmazonIdentityManagement = {
-    val builder = AmazonIdentityManagementClientBuilder
-      .standard()
-      .withCredentials(AwsCredentials.provider)
-
-    builder.setRegion(region.value)
-    builder.build()
   }
 
   private def getRole(roleName: RoleName)(implicit log: Logger): Try[Role] = Try {

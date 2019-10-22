@@ -13,9 +13,13 @@ private[sbt] case class LambdaParams(name: LambdaName, handlerName: HandlerName,
 
 private[sbt] case class S3Params(s3BucketId: S3BucketId, s3Key: S3Key)
 
-private[sbt] class AWSLambdaClient(region: Region) {
+private[sbt] class AWSLambdaClient(val region: Region) extends AwsClientSupport {
 
-  private lazy val lambdaClient = buildAwsClient
+  private lazy val lambdaClient = buildLambdaClient
+
+  protected def buildLambdaClient: AWSLambda = setupClient {
+    AWSLambdaClientBuilder.standard()
+  }
 
   def deployLambda(lambdaParams: LambdaParams, roleArn: RoleArn, s3Params: S3Params)(implicit log: Logger):
   Try[Either[CreateFunctionResult, UpdateFunctionCodeResult]] = {
@@ -129,14 +133,5 @@ private[sbt] class AWSLambdaClient(region: Region) {
     code.setS3Bucket(s3Params.s3BucketId.value)
     code.setS3Key(s3Params.s3Key.value)
     code
-  }
-
-  protected def buildAwsClient: AWSLambda = {
-    val clientBuilder = AWSLambdaClientBuilder
-      .standard()
-      .withCredentials(AwsCredentials.provider)
-
-    clientBuilder.setRegion(region.value)
-    clientBuilder.build()
   }
 }

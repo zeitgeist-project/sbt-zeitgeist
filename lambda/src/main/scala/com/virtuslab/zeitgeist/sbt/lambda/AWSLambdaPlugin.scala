@@ -111,7 +111,8 @@ object AWSLambdaPlugin extends AutoPlugin {
     )(streams.value.log),
 
     lambdaName := sbt.Keys.name.value,
-    s3Bucket := sbt.Keys.organization.value + "." + lambdaName.value,
+
+    s3Bucket := sbt.Keys.organization.value,
 
     role := lambdaName.value,
 
@@ -140,9 +141,10 @@ object AWSLambdaPlugin extends AutoPlugin {
 
   private def resolveBucketName = Def.task[S3BucketId] {
     val resolvedRegion = Region(region.value)
-    val awsIam = new AwsIam(resolvedRegion)
+    val awsIAM = new AwsIAM(resolvedRegion)
+    val awsSTS = new AwsSTS(resolvedRegion)
 
-    val bucketNameResolver = new S3BucketResolver(awsIam)
+    val bucketNameResolver = new S3BucketResolver(awsIAM, awsSTS)
     val bucketId = S3BucketId(s3Bucket.value)
     bucketNameResolver.resolveBucketName(bucketId)(streams.value.log).get
   }

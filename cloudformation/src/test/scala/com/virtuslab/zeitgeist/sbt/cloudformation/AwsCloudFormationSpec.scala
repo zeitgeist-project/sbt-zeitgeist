@@ -7,6 +7,7 @@ import com.virtuslab.zeitgeist.sbt.{Region, SbtTest}
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.{MustMatchers, WordSpec}
 
+import scala.concurrent.duration.DurationInt
 import scala.io.{Codec, Source}
 import scala.util.Failure
 
@@ -62,6 +63,16 @@ class AwsCloudFormationSpec extends WordSpec with MustMatchers with MockFactory 
 
       testDeployment must be('success)
     }
+
+    "fail to cleanup failed deployment" in {
+      mockValidateStackOK
+      mockDescribeStatus(ROLLBACK_COMPLETE)
+      mockDeleteStack
+      mockDescribeStatus(DELETE_IN_PROGRESS)
+      mockDescribeStatus(DELETE_FAILED)
+
+      testDeployment must be('failure)
+    }
   }
 
   private def testDeployment =
@@ -108,7 +119,7 @@ class AwsCloudFormationSpec extends WordSpec with MustMatchers with MockFactory 
     (cfClient.validateTemplate _).expects(*).throws(validationEx)
 
   private def createAwsClient() =
-    new AwsCloudFormation(Region("region")) {
+    new AwsCloudFormation(Region("region"), 10.millis) {
       override protected def buildClient: AmazonCloudFormation = cfClient
     }
 }

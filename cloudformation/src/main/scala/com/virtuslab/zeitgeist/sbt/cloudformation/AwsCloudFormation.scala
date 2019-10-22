@@ -9,6 +9,8 @@ import com.virtuslab.zeitgeist.sbt._
 import sbt.Logger
 
 import scala.collection.JavaConverters._
+import scala.concurrent.duration.Duration
+import scala.concurrent.duration.DurationInt
 import scala.util.{Failure, Success, Try}
 
 private [cloudformation] object AwsCloudFormation {
@@ -19,7 +21,7 @@ private [cloudformation] object AwsCloudFormation {
   val StackAwsType = "AWS::CloudFormation::Stack"
 }
 
-private[sbt] class AwsCloudFormation(region: Region) {
+private[sbt] class AwsCloudFormation(region: Region, statusCheckInterval: Duration = 2.seconds) {
   import AwsCloudFormation._
 
   lazy val client: AmazonCloudFormation = buildClient
@@ -82,7 +84,7 @@ private[sbt] class AwsCloudFormation(region: Region) {
       stackStatusStream(stack.getStackName)
         .dropWhile { // drop while the stack exists or has failed to be deleted
           case Some(status) if status != DELETE_FAILED.toString =>
-            Thread.sleep(2500)
+            delay
             true
           case _ => false
         }
@@ -200,7 +202,7 @@ private[sbt] class AwsCloudFormation(region: Region) {
     result.getStackEvents.asScala
   }
 
-  private def waitTillProcessFinished(stackName: String)(implicit log: Logger): Try[Unit] = Try {
+  private def waitTillProcessFinished(stackName: String)(implicit log: Logger) = Try {
     val statusStream = stackStatusStream(stackName)
     statusStream.takeWhile {
         case Some(status) if !status.endsWith("_PROGRESS") && status.contains("ROLLBACK") =>
@@ -219,7 +221,7 @@ private[sbt] class AwsCloudFormation(region: Region) {
       }
       .foreach { maybeStatus =>
         log.info(s"Progress: ${maybeStatus.getOrElse("UNKNOWN")}...")
-        Thread.sleep(2500)
+        delay()
       }
   }
 
@@ -250,7 +252,7 @@ private[sbt] class AwsCloudFormation(region: Region) {
       new StackResults(
         StackArn(stack.getStackId),
         stack.getOutputs.asScala.map { output =>
-          output.getOutputKey() -> StackOutput.apply(output)
+          output.getOutputKey -> StackOutput.apply(output)
         }.toMap
       )
     }.getOrElse {
@@ -262,7 +264,10 @@ private[sbt] class AwsCloudFormation(region: Region) {
     e.getErrorCode == ErrorValidation && e.getErrorMessage == ErrorMsgNoUpdates
   }
 
-  protected def buildClient = {
+  private def delay(): Unit =
+    Thread.sleep(statusCheckInterval.toMillis)
+
+  protected def buildClient: AmazonCloudFormation = {
     val builder = AmazonCloudFormationClientBuilder
       .standard()
       .withCredentials(AwsCredentials.provider)
