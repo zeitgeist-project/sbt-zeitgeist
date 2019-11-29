@@ -8,8 +8,10 @@ import com.amazonaws.services.identitymanagement.model.{GetUserResult, User}
 import com.virtuslab.zeitgeist.sbt.{SbtTest, _}
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.{MustMatchers, WordSpec}
-
 import scala.util.{Failure, Success}
+
+import com.amazonaws.services.securitytoken.AWSSecurityTokenService
+import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult
 
 class S3BucketResolverSpec extends WordSpec with MustMatchers with MockFactory with SbtTest {
 
@@ -35,6 +37,14 @@ class S3BucketResolverSpec extends WordSpec with MustMatchers with MockFactory w
       )
     }
 
+    "handle correctly accountId" in {
+      val s3Resolver = buildStubWith(accountId = "jacek-123")
+
+      s3Resolver.resolveBucketName(S3BucketId("com.test.project.{accountid}")) must be(
+        Success(S3BucketId(s"com.test.project.jacek-123"))
+      )
+    }
+
     "handle correctly hostname" in {
       val localhost = InetAddress.getLocalHost.getHostName
 
@@ -56,19 +66,32 @@ class S3BucketResolverSpec extends WordSpec with MustMatchers with MockFactory w
 
   }
 
-  private def buildStubWith(userId: String = "", userName: Option[String] = None) = {
-    val awsIamClient = new AwsIam(Region("region")) {
-      override protected def buildIamClient: AmazonIdentityManagement = {
-        val m = stub[AmazonIdentityManagement]
+  private def buildStubWith(userId: String = "", userName: Option[String] = None, accountId: String = "123456789012") = {
+    val awsIamClient: AwsIAM = new AwsIAM(Region("region")) {
+      override protected def buildIAMClient: AmazonIdentityManagement = {
+        val client = stub[AmazonIdentityManagement]
 
         val user = new User("path", userName.orNull, userId, "arn:1234567", new Date)
         val result = new GetUserResult()
         result.setUser(user)
-        (m.getUser _).when().returning(result)
+        (client.getUser _).when().returning(result)
 
-        m
+        client
       }
     }
-    new S3BucketResolver(awsIamClient)
+    val awsStsClient: AwsSTS = new AwsSTS(Region("region")) {
+      override protected def buildSTSClient: AWSSecurityTokenService = {
+        val client = stub[AWSSecurityTokenService]
+        val result = new GetCallerIdentityResult()
+          .withAccount(accountId)
+          .withArn(s"arn:aws:iam::$accountId:user/Bob")
+          .withUserId(userId)
+
+        (client.getCallerIdentity _).when(*).returning(result)
+
+        client
+      }
+    }
+    new S3BucketResolver(awsIamClient, awsStsClient)
   }
 }

@@ -19,10 +19,12 @@ class AwsS3Spec extends WordSpec with MustMatchers with MockFactory with SbtTest
 
   "Pushing file to S3 with no prior upload" should {
     "correctly set S3 metadata and upload file" in {
-
       val testFile = randomFile
-      val s3Client = generateS3Stub(testFile.length(), None, filePreviouslyExisted = false)
-
+      val s3Client = generateS3Stub(
+        fileSize = testFile.length(),
+        maybeFileHash = None,
+        filePreviouslyExisted = false
+      )
 
       val triedKey = s3Client.pushJarToS3(testFile, S3BucketId("test-bucket"), "key", true)
       triedKey.get.value must not be (empty)
@@ -70,22 +72,11 @@ class AwsS3Spec extends WordSpec with MustMatchers with MockFactory with SbtTest
       override protected[sbt] def buildClient: AmazonS3 = {
         val m = mock[AmazonS3]
 
-
-        val expectedMetadata = new ObjectMetadata()
-        expectedMetadata.setUserMetadata(Map("zeitgeist.hash" -> "hash").asJava)
-
-        if(expectUpload) {
-          val result = new PutObjectResult
+        if (expectUpload) {
           (m.putObject(_: PutObjectRequest))
             .expects(*)
-            .onCall { req: PutObjectRequest =>
-              if (req.getMetadata != expectedMetadata)
-                throw new IllegalArgumentException(s"Incorrect metadata sent: ${req.getMetadata.getUserMetadata} vs ${expectedMetadata.getUserMetadata}")
-
-              result
-            }
+            .onCall { _: PutObjectRequest => new PutObjectResult }
         }
-
 
         val objSummary = new S3ObjectSummary()
         objSummary.setKey("jar-file.jar")
@@ -94,16 +85,17 @@ class AwsS3Spec extends WordSpec with MustMatchers with MockFactory with SbtTest
 
 
         val listResult = new ObjectListing() {
-          override def getObjectSummaries: util.List[S3ObjectSummary] = if(filePreviouslyExisted) summaries.asJava else List().asJava
+          override def getObjectSummaries: util.List[S3ObjectSummary] = if (filePreviouslyExisted) summaries.asJava else List().asJava
         }
         (m.listObjects(_: String, _: String)).expects(*, *).returns(listResult)
 
-
-        val metadata = new ObjectMetadata()
-        maybeFileHash.foreach { fileHash =>
-          metadata.addUserMetadata(AWSS3.HashMetadata, fileHash)
+        if (filePreviouslyExisted) {
+          val metadata = new ObjectMetadata()
+          maybeFileHash.foreach { fileHash =>
+            metadata.addUserMetadata(AWSS3.HashMetadata, fileHash)
+          }
+          (m.getObjectMetadata(_: String, _: String)).expects(*, *).returns(metadata)
         }
-        (m.getObjectMetadata(_: String, _: String)).expects(*, *).returns(metadata)
 
         m
       }

@@ -22,7 +22,7 @@ class AWSLambdaDeployer {
     val resolvedRegion = Region(region)
     val awsS3 = new AWSS3(resolvedRegion)
     val awsLambda = new AWSLambdaClient(resolvedRegion)
-    val awsIam = new AwsIam(resolvedRegion)
+    val awsIam = new AwsIAM(resolvedRegion)
     val resolvedLambdaName = LambdaName(lambdaName)
 
     val resolvedS3Key = s3KeyPrefix.getOrElse("") + jar.getName

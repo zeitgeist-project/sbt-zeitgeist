@@ -1,7 +1,7 @@
 import sbt.Keys.publishTo
 import sbt.ScriptedPlugin.autoImport.scriptedBufferLog
 
-val projectVersion          = "0.1.0"
+val projectVersion          = "0.1.0-SNAPSHOT"
 val projectOrg              = "com.virtuslab.zeitgeist"
 val awsSdkVersion           = "1.11.458"
 
@@ -48,8 +48,9 @@ lazy val util = (project in file("util")).
     name := "sbt-util",
     sbtPlugin := true,
     libraryDependencies ++= Seq(
-      "com.amazonaws"  % "aws-java-sdk-iam"         % awsSdkVersion,
-      "com.amazonaws"  % "aws-java-sdk-s3"          % awsSdkVersion,
+      "com.amazonaws"  % "aws-java-sdk-iam"            % awsSdkVersion,
+      "com.amazonaws"  % "aws-java-sdk-sts"            % awsSdkVersion,
+      "com.amazonaws"  % "aws-java-sdk-s3"             % awsSdkVersion,
       "com.amazonaws"  % "aws-java-sdk-cloudformation" % awsSdkVersion
     )
   )

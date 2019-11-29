@@ -1,7 +1,5 @@
 package com.virtuslab.zeitgeist.sbt
 
-import com.amazonaws.services.cloudformation.model.Output
-
 case class APIId(value: String) extends AnyVal
 case class Region(value: String) extends AnyVal
 case class S3BucketId(value: String) extends AnyVal

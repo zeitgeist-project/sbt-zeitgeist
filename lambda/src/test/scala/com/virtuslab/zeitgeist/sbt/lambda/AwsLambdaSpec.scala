@@ -20,7 +20,7 @@ class AwsLambdaSpec extends WordSpec with MustMatchers with MockFactory with Sbt
 
 
       val awsLambdaClient = new AWSLambdaClient(Region("region")) {
-        override protected def buildAwsClient = {
+        override protected def buildLambdaClient: AWSLambda = {
           val m = stub[AWSLambda]
 
           val getRequest = new GetFunctionRequest
