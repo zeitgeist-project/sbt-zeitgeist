@@ -1,7 +1,7 @@
 import sbt.Keys.publishTo
 import sbt.ScriptedPlugin.autoImport.scriptedBufferLog
 
-val projectVersion          = "0.1.0-SNAPSHOT"
+val projectVersion          = "0.1.2-SNAPSHOT"
 val projectOrg              = "com.virtuslab.zeitgeist"
 val awsSdkVersion           = "1.11.458"
 
@@ -11,8 +11,9 @@ lazy val commonSettings = Seq(
   scalaVersion := "2.12.8",
   retrieveManaged := true,
 
-  bintrayOrganization := Some("zeitgeist"),
-  licenses += ("MIT", url("http://opensource.org/licenses/MIT")),
+  bintrayOrganization := Some("virtuslab"),
+  bintrayRepository := "sbt-plugins",
+  licenses += "MIT" -> url("http://opensource.org/licenses/MIT"),
 
   fork in (Test, run) := true,
 
@@ -25,7 +26,6 @@ lazy val commonSettings = Seq(
 
   addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "0.14.8")
 )
-
 
 lazy val root = (project in file(".")).
   settings(commonSettings: _*).
@@ -74,8 +74,9 @@ lazy val lambda = (project in file("lambda")).
       "com.amazonaws"  % "aws-java-sdk-lambda"      % awsSdkVersion
     ),
 
-    scriptedLaunchOpts := { scriptedLaunchOpts.value ++
-      Seq("-Xmx1024M", "-Dplugin.version=" + version.value, "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005")
+    scriptedLaunchOpts := {
+      scriptedLaunchOpts.value ++
+        Seq("-Xmx1024M", "-Dplugin.version=" + version.value, "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005")
     },
     scriptedBufferLog := false
   ).
