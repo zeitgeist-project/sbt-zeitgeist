@@ -118,7 +118,7 @@ object AWSLambdaPlugin extends AutoPlugin {
 
     createAutomatically := false,
 
-    discoverAWSLambdaClasses := LambdaClassDiscovery.perform(compile.in(Compile).value),
+    discoverAWSLambdaClasses := LambdaClassDiscovery.perform((Compile / compile).value),
 
     s3Jar := sbtassembly.AssemblyKeys.assembly.value,
 
